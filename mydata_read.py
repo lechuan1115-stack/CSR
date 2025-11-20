@@ -1,6 +1,7 @@
 #!/usr/bin/env python 
 # -*- coding:utf-8 -*-
 import numpy as np
+import torch
 from torch.utils.data import Dataset
 import h5py
 # 原始文件中是在datasets.py中读取数据的，分别读取测试集和训练集
@@ -254,10 +255,14 @@ class SignalDataset(Dataset):
         if self.sample_entries is not None:
             sample_path, label = self.sample_entries[item]
             X = _load_single_sample(sample_path)
-            return X, label
+            if self.transform:
+                X = self.transform(X)
+            return torch.from_numpy(np.ascontiguousarray(X)), torch.tensor(label, dtype=torch.long)
         X = self.X[item]
         Y = self.Y[item]
-        return X, Y
+        if self.transform:
+            X = self.transform(X)
+        return torch.from_numpy(np.ascontiguousarray(X)), torch.tensor(Y, dtype=torch.long)
     def __len__(self):
         return len(self.sample_entries) if self.sample_entries is not None else len(self.X)
 
@@ -313,10 +318,14 @@ class SignalDataset1(Dataset):
         if self.sample_entries is not None:
             sample_path, label = self.sample_entries[item]
             X = _load_single_sample(sample_path)
-            return X, label
+            if self.transform:
+                X = self.transform(X)
+            return torch.from_numpy(np.ascontiguousarray(X)), torch.tensor(label, dtype=torch.long)
         X = self.X[item]
         Y = self.Y[item]
-        return X, Y
+        if self.transform:
+            X = self.transform(X)
+        return torch.from_numpy(np.ascontiguousarray(X)), torch.tensor(Y, dtype=torch.long)
     def __len__(self):
         return len(self.sample_entries) if self.sample_entries is not None else len(self.X)
 
@@ -341,10 +350,14 @@ class SignalDataset2(Dataset):
         if self.sample_entries is not None:
             sample_path, label = self.sample_entries[item]
             X = _load_single_sample(sample_path)
-            return X, label
+            if self.transform:
+                X = self.transform(X)
+            return torch.from_numpy(np.ascontiguousarray(X)), torch.tensor(label, dtype=torch.long)
         X = self.X[item]
         Y = self.Y[item]
-        return X, Y
+        if self.transform:
+            X = self.transform(X)
+        return torch.from_numpy(np.ascontiguousarray(X)), torch.tensor(Y, dtype=torch.long)
     def __len__(self):
         return len(self.sample_entries) if self.sample_entries is not None else len(self.X)
 class SignalDataset2D(Dataset):
@@ -366,10 +379,14 @@ class SignalDataset2D(Dataset):
         if self.sample_entries is not None:
             sample_path, label = self.sample_entries[item]
             X = _load_single_sample(sample_path)
-            return X, label
+            if self.transform:
+                X = self.transform(X)
+            return torch.from_numpy(np.ascontiguousarray(X)), torch.tensor(label, dtype=torch.long)
         X = self.X[item]
         Y = self.Y[item]
-        return X, Y
+        if self.transform:
+            X = self.transform(X)
+        return torch.from_numpy(np.ascontiguousarray(X)), torch.tensor(Y, dtype=torch.long)
     def __len__(self):
         return len(self.sample_entries) if self.sample_entries is not None else len(self.X)
 
