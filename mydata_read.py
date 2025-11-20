@@ -9,9 +9,10 @@ import json
 import os
 from pathlib import Path
 
-def _check_path(p):
+def _check_path(p, verbose=True):
     full = os.path.abspath(p)
-    print(f"[DATA] trying to read: {full}")
+    if verbose:
+        print(f"[DATA] trying to read: {full}")
     if not os.path.exists(full):
         raise FileNotFoundError(f"File not found: {full}")
     return full
@@ -56,7 +57,7 @@ def load_npy(x_path, y_path):
 
 def load_samples_from_list(list_path, base_dir=None):
     """
-    从标注列表读取逐样本的 .npy 数据。
+    从标注列表读取逐样本的 .npy 数据路径与标签（仅解析，不一次性加载全部数据）。
 
     参数:
         list_path: 包含“样本路径 + 标签”的 txt。每行形如：
@@ -65,13 +66,12 @@ def load_samples_from_list(list_path, base_dir=None):
         base_dir : 可选，将列表中的相对路径拼接在该目录下。
 
     返回:
-        data: (N, 2, L)
-        label: (N,)
+        entries: List[Tuple[pathlib.Path, int]]
     """
     list_path = Path(list_path)
     _check_path(list_path)
 
-    data_list, label_list = [], []
+    entries = []
     with list_path.open('r', encoding='utf-8') as f:
         for lineno, raw in enumerate(f, 1):
             line = raw.strip()
@@ -85,31 +85,13 @@ def load_samples_from_list(list_path, base_dir=None):
             if base_dir is not None and not sample_path.is_absolute():
                 sample_path = Path(base_dir) / sample_path
 
-            sample_np = np.load(_check_path(sample_path)).astype(np.float32)
-            if sample_np.shape[0] == 240000 and sample_np.shape[1] == 2:
-                sample_np = sample_np.T
-            if sample_np.shape != (2, sample_np.shape[1]):
-                if sample_np.ndim != 2:
-                    raise RuntimeError(f"样本 {sample_path} 维度异常: {sample_np.shape}")
-            data_list.append(sample_np)
-            label_list.append(int(label_str))
+            entries.append((sample_path, int(label_str)))
 
-    if not data_list:
+    if not entries:
         raise RuntimeError("未在列表中读取到任何样本")
 
-    X = np.stack(data_list, axis=0)  # (N, 2, L)
-    Y = np.asarray(label_list, dtype=np.int64)
-
-    index = [i for i in range(len(Y))]
-    random.shuffle(index)
-    data = X[index, :, :]
-    label = Y[index]
-
-    print(json.dumps({"str": f"读取样本列表: X{X.shape}, Y{Y.shape}"}, ensure_ascii=False))
-    print(json.dumps({"str": f"打乱数据集：{data.shape}"}, ensure_ascii=False))
-    print(json.dumps({"str": f"打乱标签：{label.shape}"}, ensure_ascii=False))
-
-    return data, label
+    print(json.dumps({"str": f"读取样本列表：共 {len(entries)} 条"}, ensure_ascii=False))
+    return entries
 
 
 
@@ -161,6 +143,15 @@ def load_h4(h5_path):
         json_string4 = json.dumps(txdata4, ensure_ascii=False)
         print(json_string4)
     return data, label
+
+
+def _load_single_sample(sample_path):
+    sample_np = np.load(_check_path(sample_path, verbose=False)).astype(np.float32)
+    if sample_np.shape == (240000, 2):
+        sample_np = sample_np.T
+    if sample_np.ndim != 2 or sample_np.shape[0] != 2:
+        raise RuntimeError(f"样本 {sample_path} 维度异常: {sample_np.shape}")
+    return sample_np
 def load_h5(h5_path):
     # load training data  读取数据并处理
     h5_path = _check_path(h5_path)
@@ -247,10 +238,12 @@ class SignalDataset(Dataset):
     def __init__(self, data_folder, transform=None):
         self.data_folder = data_folder
         self.transform = transform
+        self.sample_entries = None
         if isinstance(data_folder, (tuple, list)) and len(data_folder) == 2:
             pair_second = Path(data_folder[1])
             if pair_second.suffix.lower() == '.txt':
-                self.X, self.Y = load_samples_from_list(pair_second, base_dir=data_folder[0])
+                self.sample_entries = load_samples_from_list(pair_second, base_dir=data_folder[0])
+                self.X, self.Y = None, None
             else:
                 self.X, self.Y = load_npy(data_folder[0], data_folder[1])
         else:
@@ -258,11 +251,15 @@ class SignalDataset(Dataset):
 
     def __getitem__(self, item):
         # 返回一个音频数据
+        if self.sample_entries is not None:
+            sample_path, label = self.sample_entries[item]
+            X = _load_single_sample(sample_path)
+            return X, label
         X = self.X[item]
         Y = self.Y[item]
         return X, Y
     def __len__(self):
-        return len(self.X)
+        return len(self.sample_entries) if self.sample_entries is not None else len(self.X)
 
 
 def load_h5_2D(h5_path):
@@ -299,10 +296,12 @@ class SignalDataset1(Dataset):
     def __init__(self, data_folder, transform=None):
         self.data_folder = data_folder
         self.transform = transform
+        self.sample_entries = None
         if isinstance(data_folder, (tuple, list)) and len(data_folder) == 2:
             pair_second = Path(data_folder[1])
             if pair_second.suffix.lower() == '.txt':
-                self.X, self.Y = load_samples_from_list(pair_second, base_dir=data_folder[0])
+                self.sample_entries = load_samples_from_list(pair_second, base_dir=data_folder[0])
+                self.X, self.Y = None, None
             else:
                 self.X, self.Y = load_npy(data_folder[0], data_folder[1])
         else:
@@ -311,21 +310,27 @@ class SignalDataset1(Dataset):
 
     def __getitem__(self, item):
         # 返回一个音频数据
+        if self.sample_entries is not None:
+            sample_path, label = self.sample_entries[item]
+            X = _load_single_sample(sample_path)
+            return X, label
         X = self.X[item]
         Y = self.Y[item]
         return X, Y
     def __len__(self):
-        return len(self.X)
+        return len(self.sample_entries) if self.sample_entries is not None else len(self.X)
 
 class SignalDataset2(Dataset):
     """数据加载器"""
     def __init__(self, data_folder, transform=None):
         self.data_folder = data_folder
         self.transform = transform
+        self.sample_entries = None
         if isinstance(data_folder, (tuple, list)) and len(data_folder) == 2:
             pair_second = Path(data_folder[1])
             if pair_second.suffix.lower() == '.txt':
-                self.X, self.Y = load_samples_from_list(pair_second, base_dir=data_folder[0])
+                self.sample_entries = load_samples_from_list(pair_second, base_dir=data_folder[0])
+                self.X, self.Y = None, None
             else:
                 self.X, self.Y = load_npy(data_folder[0], data_folder[1])
         else:
@@ -333,30 +338,40 @@ class SignalDataset2(Dataset):
 
     def __getitem__(self, item):
         # 返回一个音频数据
+        if self.sample_entries is not None:
+            sample_path, label = self.sample_entries[item]
+            X = _load_single_sample(sample_path)
+            return X, label
         X = self.X[item]
         Y = self.Y[item]
         return X, Y
     def __len__(self):
-        return len(self.X)
+        return len(self.sample_entries) if self.sample_entries is not None else len(self.X)
 class SignalDataset2D(Dataset):
     """数据加载器"""
     def __init__(self, data_folder, transform=None):
         self.data_folder = data_folder
         self.transform = transform
+        self.sample_entries = None
         if isinstance(data_folder, (tuple, list)) and len(data_folder) == 2:
             pair_second = Path(data_folder[1])
             if pair_second.suffix.lower() == '.txt':
-                self.X, self.Y = load_samples_from_list(pair_second, base_dir=data_folder[0])
+                self.sample_entries = load_samples_from_list(pair_second, base_dir=data_folder[0])
+                self.X, self.Y = None, None
             else:
                 self.X, self.Y = load_npy(data_folder[0], data_folder[1])
         else:
             self.X, self.Y = load_h5_2D(data_folder)   # (3392, 8192, 1)
     def __getitem__(self, item):
+        if self.sample_entries is not None:
+            sample_path, label = self.sample_entries[item]
+            X = _load_single_sample(sample_path)
+            return X, label
         X = self.X[item]
         Y = self.Y[item]
         return X, Y
     def __len__(self):
-        return len(self.X)
+        return len(self.sample_entries) if self.sample_entries is not None else len(self.X)
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
