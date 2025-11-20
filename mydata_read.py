@@ -19,11 +19,7 @@ def _check_path(p):
 
 def load_npy(x_path, y_path):
     """
-    读取 .npy 文件格式的数据，并调整为模型所需的形状。
-
-    输入的 X 形状: (N, L, 2) —— N 为样本数，L 为长度，2 为通道。
-    输出的 X 形状: (N, 2, L) —— Conv1d 期望的 (batch, channel, length)。
-    标签 Y 形状保持为 (N,)。
+    保持兼容的旧接口：直接从 .npy 文件加载 (N, L, 2) + (N,) 形式的数据。
     """
     x_path = Path(x_path)
     y_path = Path(y_path)
@@ -52,6 +48,64 @@ def load_npy(x_path, y_path):
     label = Y[index]
 
     print(json.dumps({"str": f"读取 .npy 数据: X{X.shape}, Y{Y.shape}"}, ensure_ascii=False))
+    print(json.dumps({"str": f"打乱数据集：{data.shape}"}, ensure_ascii=False))
+    print(json.dumps({"str": f"打乱标签：{label.shape}"}, ensure_ascii=False))
+
+    return data, label
+
+
+def load_samples_from_list(list_path, base_dir=None):
+    """
+    从标注列表读取逐样本的 .npy 数据。
+
+    参数:
+        list_path: 包含“样本路径 + 标签”的 txt。每行形如：
+                   <path_to_sample.npy> <label>
+                   （路径中可能有空格，因此使用 rsplit 拆分标签）
+        base_dir : 可选，将列表中的相对路径拼接在该目录下。
+
+    返回:
+        data: (N, 2, L)
+        label: (N,)
+    """
+    list_path = Path(list_path)
+    _check_path(list_path)
+
+    data_list, label_list = [], []
+    with list_path.open('r', encoding='utf-8') as f:
+        for lineno, raw in enumerate(f, 1):
+            line = raw.strip()
+            if not line:
+                continue
+            if ' ' not in line:
+                raise RuntimeError(f"第 {lineno} 行缺少标签，请确保格式为 '<path> <label>'")
+
+            sample_str, label_str = line.rsplit(maxsplit=1)
+            sample_path = Path(sample_str)
+            if base_dir is not None and not sample_path.is_absolute():
+                sample_path = Path(base_dir) / sample_path
+
+            sample_np = np.load(_check_path(sample_path)).astype(np.float32)
+            if sample_np.shape[0] == 240000 and sample_np.shape[1] == 2:
+                sample_np = sample_np.T
+            if sample_np.shape != (2, sample_np.shape[1]):
+                if sample_np.ndim != 2:
+                    raise RuntimeError(f"样本 {sample_path} 维度异常: {sample_np.shape}")
+            data_list.append(sample_np)
+            label_list.append(int(label_str))
+
+    if not data_list:
+        raise RuntimeError("未在列表中读取到任何样本")
+
+    X = np.stack(data_list, axis=0)  # (N, 2, L)
+    Y = np.asarray(label_list, dtype=np.int64)
+
+    index = [i for i in range(len(Y))]
+    random.shuffle(index)
+    data = X[index, :, :]
+    label = Y[index]
+
+    print(json.dumps({"str": f"读取样本列表: X{X.shape}, Y{Y.shape}"}, ensure_ascii=False))
     print(json.dumps({"str": f"打乱数据集：{data.shape}"}, ensure_ascii=False))
     print(json.dumps({"str": f"打乱标签：{label.shape}"}, ensure_ascii=False))
 
@@ -194,7 +248,11 @@ class SignalDataset(Dataset):
         self.data_folder = data_folder
         self.transform = transform
         if isinstance(data_folder, (tuple, list)) and len(data_folder) == 2:
-            self.X, self.Y = load_npy(data_folder[0], data_folder[1])
+            pair_second = Path(data_folder[1])
+            if pair_second.suffix.lower() == '.txt':
+                self.X, self.Y = load_samples_from_list(pair_second, base_dir=data_folder[0])
+            else:
+                self.X, self.Y = load_npy(data_folder[0], data_folder[1])
         else:
             self.X, self.Y = load_h6(data_folder)   # (3392, 8192, 1)
 
@@ -242,7 +300,11 @@ class SignalDataset1(Dataset):
         self.data_folder = data_folder
         self.transform = transform
         if isinstance(data_folder, (tuple, list)) and len(data_folder) == 2:
-            self.X, self.Y = load_npy(data_folder[0], data_folder[1])
+            pair_second = Path(data_folder[1])
+            if pair_second.suffix.lower() == '.txt':
+                self.X, self.Y = load_samples_from_list(pair_second, base_dir=data_folder[0])
+            else:
+                self.X, self.Y = load_npy(data_folder[0], data_folder[1])
         else:
             self.X, self.Y = load_h4(data_folder)   # (3392, 8192, 1)
         # self.X, self.Y = load_h5(data_folder)  # (3392, 8192, 1)
@@ -261,7 +323,11 @@ class SignalDataset2(Dataset):
         self.data_folder = data_folder
         self.transform = transform
         if isinstance(data_folder, (tuple, list)) and len(data_folder) == 2:
-            self.X, self.Y = load_npy(data_folder[0], data_folder[1])
+            pair_second = Path(data_folder[1])
+            if pair_second.suffix.lower() == '.txt':
+                self.X, self.Y = load_samples_from_list(pair_second, base_dir=data_folder[0])
+            else:
+                self.X, self.Y = load_npy(data_folder[0], data_folder[1])
         else:
             self.X, self.Y = load_h5(data_folder)  # (3392, 8192, 1)
 
@@ -278,7 +344,11 @@ class SignalDataset2D(Dataset):
         self.data_folder = data_folder
         self.transform = transform
         if isinstance(data_folder, (tuple, list)) and len(data_folder) == 2:
-            self.X, self.Y = load_npy(data_folder[0], data_folder[1])
+            pair_second = Path(data_folder[1])
+            if pair_second.suffix.lower() == '.txt':
+                self.X, self.Y = load_samples_from_list(pair_second, base_dir=data_folder[0])
+            else:
+                self.X, self.Y = load_npy(data_folder[0], data_folder[1])
         else:
             self.X, self.Y = load_h5_2D(data_folder)   # (3392, 8192, 1)
     def __getitem__(self, item):

@@ -52,9 +52,9 @@ parser.add_argument('--plot', action='store_true', help="whether to plot feature
 #参数解析
 args = parser.parse_args()#将上面定义的所有参数从命令行读取并解析，最终得到args变量在程序中调用
 
-# 数据路径：可直接修改为新的 .npy 文件位置
-X_PATH = Path(r"E:\闭集开集项目材料\项目所用代码\dwingeloo\train_X.npy")
-Y_PATH = Path(r"E:\闭集开集项目材料\项目所用代码\dwingeloo\train_y.npy")
+# 数据路径：可直接修改为新的逐样本 .npy 目录与标签列表
+SAMPLES_DIR = Path(r"E:\闭集开集项目材料\项目所用代码\dwingeloo\samples")
+TRAIN_LIST = Path(r"E:\闭集开集项目材料\项目所用代码\dwingeloo\train_list.txt")
 
 #数据路径设置与文件名拼接
 file ='./data/'# file ='/media/liuchang/Expansion1/ADS-B_luoyang/'
@@ -63,7 +63,7 @@ def main():
     # SNR = 4#
     # filepath = file + 'iq_DATAIQ2_ch1_40M_100x100_LOS_4096_{}dB_FADE_5A.mat'.format(SNR)
     for SNR in range(20,22,2):
-        filepath = (X_PATH, Y_PATH)
+        filepath = (SAMPLES_DIR, TRAIN_LIST)
         # trainfilepath = file + 'close_train_20/ADS-B_{}dB_train.mat'.format(SNR)
         # valfilepath = file + 'close_validation_20/ADS-B_{}dB_validation.mat'.format(SNR)
         # testfilepath = file + 'close_test_20/ADS-B_{}dB_test.mat'.format(SNR)
@@ -82,8 +82,8 @@ def main():
             patience = 15
         # 打印当前文件，模型结构，训练超参数...
         print("当前运行程序：5G信号仿真.py")
-        print("数据集为：", f"X: {X_PATH}")
-        print("标签为：", f"Y: {Y_PATH}")
+        print("数据集目录：", f"{SAMPLES_DIR}")
+        print("标签列表：", f"{TRAIN_LIST}")
         print("模型为：", args.model)
         print("超参数为：batch_size={}，lr_model={} earying_stop={}".format(args.batch_size, args.lr_model, patience))
         #环境设置（是否使用GPU）
